@@ -198,14 +198,12 @@ static void rc_enc_shift_low(RangeEnc *e) {
 
     /* Check if the top byte of the 32-bit portion is determined */
     if (low32 < 0xFF000000u || carry != 0) {
-        uint8_t temp = e->cache;
-
         /* Output cached byte + carry */
-        rc_enc_output_byte(e, (uint8_t)(temp + carry));
+        rc_enc_output_byte(e, (uint8_t)(e->cache + carry));
 
         /* Output pending 0xFF bytes + carry */
         while (e->cache_size > 0) {
-            rc_enc_output_byte(e, (uint8_t)(0xFF + carry));
+            rc_enc_output_byte(e, (uint8_t)(0xFFu + carry));
             e->cache_size--;
         }
 
@@ -285,12 +283,12 @@ static void rc_dec_init(RangeDec *d, const uint8_t *in, size_t len) {
     d->in_len = len;
 
     /*
-     * The encoder always emits its initial cache byte (0x00) as the
-     * first output byte; it carries no information. Skip that byte,
-     * then load the following 4 bytes into code so that `code` holds
-     * exactly the 32-bit value (low + range_state) the decoder needs.
+     * The encoder's first output byte is its initial cache byte, which
+     * is part of the coded value. Load the first 4 stream bytes into
+     * `code` so it holds the same 32-bit value as the encoder's low
+     * word; subsequent normalization shifts in one byte at a time,
+     * exactly mirroring rc_enc_shift_low().
      */
-    rc_dec_read_byte(d);
     for (i = 0; i < 4; i++) {
         d->code = (d->code << 8) | rc_dec_read_byte(d);
     }
