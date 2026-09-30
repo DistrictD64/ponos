@@ -185,10 +185,20 @@ static void rc_enc_output_byte(RangeEnc *e, uint8_t b) {
  * Handles carry propagation using the cache mechanism.
  */
 static void rc_enc_shift_low(RangeEnc *e) {
+    /*
+     * The carry bit lives in bit 32 of `low` (set by additions in
+     * rc_enc_bit). It must be consumed here, otherwise it would be
+     * masked away by the shift below and never propagate into the
+     * already-emitted bytes.
+     */
+    uint32_t carry = (uint32_t)(e->low >> 32);
+    uint32_t low32 = (uint32_t)e->low;
+
+    e->low = (uint64_t)low32 << 8;
+
     /* Check if the top byte of the 32-bit portion is determined */
-    if ((uint32_t)e->low < 0xFF000000u || (uint32_t)(e->low >> 32) != 0) {
+    if (low32 < 0xFF000000u || carry != 0) {
         uint8_t temp = e->cache;
-        uint8_t carry = (uint8_t)(uint32_t)(e->low >> 32);
 
         /* Output cached byte + carry */
         rc_enc_output_byte(e, (uint8_t)(temp + carry));
@@ -200,14 +210,11 @@ static void rc_enc_shift_low(RangeEnc *e) {
         }
 
         /* New cache: next byte of low */
-        e->cache = (uint8_t)((uint32_t)(e->low >> 24));
+        e->cache = (uint8_t)(low32 >> 24);
     } else {
         /* Top byte is 0xFF — ambiguous, cache it */
         e->cache_size++;
     }
-
-    /* Shift: keep lower 32 bits, shift left by 8 */
-    e->low = (uint64_t)((uint32_t)e->low << 8);
 }
 
 /* Normalize: output bytes while range is too small */
@@ -278,11 +285,13 @@ static void rc_dec_init(RangeDec *d, const uint8_t *in, size_t len) {
     d->in_len = len;
 
     /*
-     * Read 5 bytes into code. Since code is uint32_t, the first byte
-     * overflows out. This is correct because the encoder's first output
-     * byte is always 0 (initial cache value, no carry yet).
+     * The encoder always emits its initial cache byte (0x00) as the
+     * first output byte; it carries no information. Skip that byte,
+     * then load the following 4 bytes into code so that `code` holds
+     * exactly the 32-bit value (low + range_state) the decoder needs.
      */
-    for (i = 0; i < 5; i++) {
+    rc_dec_read_byte(d);
+    for (i = 0; i < 4; i++) {
         d->code = (d->code << 8) | rc_dec_read_byte(d);
     }
 }
