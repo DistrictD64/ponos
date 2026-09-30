@@ -91,6 +91,3 @@ Returns 0 on success, nonzero on error. Caller frees output with `free()`.
 - Single-threaded
 - No external libraries
 
-## License
-
-Public domain / MIT (choose your preference).
